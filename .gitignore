@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Output files
+*.mp4
+*.mp3
+*.avi
+*.mov
+temp_*.mp4
+final_*.mp4
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Examples (keep structure but ignore large files)
+examples/*.mp4
+examples/*.mp3
+examples/*.avi
+
+# Keep example structure
+!examples/.gitkeep
