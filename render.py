@@ -11,11 +11,13 @@ from pathlib import Path
 
 # 转场效果文件列表（按顺序使用，会自动循环）
 TRANSITION_FILES = [
-    "transitions/gridflip.glsl",
-    "transitions/inverted-page-curl.glsl",
-    "transitions/mosaic.glsl",
-    "transitions/perlin.glsl",
-    "transitions/stereo-viewer.glsl",
+    "transitions/chromatic-rift.glsl",
+    "transitions/prismatic-veils.glsl",
+    "transitions/kinetic-lattice.glsl",
+    # "transitions/inverted-page-curl.glsl",
+    # "transitions/mosaic.glsl",
+    # "transitions/perlin.glsl",
+    # "transitions/stereo-viewer.glsl",
 ]
 
 
@@ -228,9 +230,13 @@ def main():
             vcodec="h264_nvenc",
             pix_fmt="yuv420p",
             bitrate="15M",
-            preset="p1",  # 最快编码速度
+            preset="p4",  # 最快编码速度
             rc="cbr",  # 恒定码率模式
-            **{"rc-lookahead": "0"},  # 禁用look-ahead加速编码
+            **{
+                "rc-lookahead": "32",
+                "spatial-aq": "1",
+                "temporal-aq": "1",
+            },  # 启用空间和时间自适应量化
         )
         .overwrite_output()
         .run_async(pipe_stdin=True, quiet=True)
