@@ -67,18 +67,17 @@ class ApiVlogRenderer:
         """初始化边框渲染系统（图片和视频使用不同边框）"""
         print("📝 初始化叠加层...")
 
-        # 图片边框（使用模板配置的边框）
-        self.image_border_renderer = BorderRenderer(
-            self.config.border["path"], WIDTH, HEIGHT
-        )
+        # 图片边框（使用模板配置的图片边框）
+        image_border_path = self.config.border.get("image_path") or self.config.border.get("path")
+        self.image_border_renderer = BorderRenderer(image_border_path, WIDTH, HEIGHT)
         self.image_border_tex = self.ctx.texture((WIDTH, HEIGHT), 4)
         self.image_border_tex.write(self.image_border_renderer.get_texture_data())
 
-        # 视频边框（使用 border_video.png，如果不存在则使用相同的）
-        video_border_path = self.config.border["path"].replace("border.png", "border_video.png")
-        if not Path(video_border_path).exists():
-            print(f"   ⚠️  border_video.png 不存在，使用相同边框")
-            video_border_path = self.config.border["path"]
+        # 视频边框（使用模板配置的视频边框，如果不存在则回退到图片边框）
+        video_border_path = self.config.border.get("video_path")
+        if not video_border_path or not Path(video_border_path).exists():
+            print(f"   ⚠️  video_path 未配置或文件不存在，使用图片边框")
+            video_border_path = image_border_path
         
         self.video_border_renderer = BorderRenderer(video_border_path, WIDTH, HEIGHT)
         self.video_border_tex = self.ctx.texture((WIDTH, HEIGHT), 4)

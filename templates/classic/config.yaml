@@ -4,7 +4,8 @@ description: "经典风格 - 适合正式场合"
 
 # 边框配置
 border:
-  path: "templates/classic/border.png"
+  image_path: "templates/classic/border.png"        # 图片专用边框（8秒）
+  video_path: "templates/classic/border_video.png"  # 视频统一边框（16秒/段）
 
 # 背景音乐
 bgm:

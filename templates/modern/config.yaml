@@ -4,7 +4,8 @@ description: "现代风格 - 适合年轻化场景"
 
 # 边框配置
 border:
-  path: "templates/modern/border.png"
+  image_path: "templates/modern/border.png"        # 图片专用边框（8秒）
+  video_path: "templates/modern/border_video.png"  # 视频统一边框（16秒/段）
 
 # 背景音乐
 bgm:
