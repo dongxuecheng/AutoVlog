@@ -63,7 +63,7 @@ EXPOSE 8000
 # 打印一下版本信息确保安装成功
 RUN python -c "import moderngl; print(f'ModernGL Version: {moderngl.__version__}')"
 
-# 11. 默认启动 API 服务
-CMD ["python", "-m", "uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000"]
-
-CMD ["python"]
+# 11. 默认启动 API 服务（增加超时配置以支持长时间渲染）
+# --timeout-keep-alive: 保持连接超时时间（300秒=5分钟）
+# --timeout-graceful-shutdown: 优雅关闭超时
+CMD ["python", "-m", "uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "300"]
