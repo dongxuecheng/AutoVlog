@@ -1,0 +1,80 @@
+# 全局配置文件 - 所有模板配置
+
+# 全局渲染参数
+global:
+  width: 1920
+  height: 1080
+  fps: 25
+  image_duration: 8.0      # 图片持续时间（秒）
+  video_duration: 16.0     # 每个视频持续时间（秒）
+  transition_duration: 2.0 # 转场持续时间（秒）
+
+templates:
+  classic:
+    name: "Classic"
+    description: "经典风格 - 适合正式场合"
+    border:
+      image_path: "templates/classic/border.png"
+      video_path: "templates/classic/border_video.png"
+    bgm:
+      path: "templates/classic/bgm.mp3"
+    transitions:
+      - "transitions/ai5.glsl"
+      - "transitions/ai3.glsl"
+      - "transitions/ai2.glsl"
+    font:
+      path: "fonts/NotoSansSC-Bold.otf"
+      size: 72
+      color: [255, 255, 255, 255]
+      outline_color: [0, 0, 0, 200]
+      outline_width: 3
+    subtitle:
+      template: "《{year}年{month}月{day}日，长沙卷烟厂安全体验馆留念》"
+      typewriter_speed: 3
+      duration: 6.0
+
+  modern:
+    name: "Modern"
+    description: "现代风格 - 适合年轻化场景"
+    border:
+      image_path: "templates/modern/border.png"
+      video_path: "templates/modern/border_video.png"
+    bgm:
+      path: "templates/modern/bgm.mp3"
+    transitions:
+      - "transitions/mosaic.glsl"
+      - "transitions/gridflip.glsl"
+      - "transitions/perlin.glsl"
+    font:
+      path: "fonts/NotoSansSC-Medium.otf"
+      size: 68
+      color: [255, 255, 100, 255]
+      outline_color: [50, 50, 50, 220]
+      outline_width: 2
+    subtitle:
+      template: "{year}.{month}.{day} | 安全体验馆记录"
+      typewriter_speed: 2
+      duration: 5.0
+
+  elegant:
+    name: "Elegant"
+    description: "优雅风格 - 适合艺术展示"
+    border:
+      image_path: "templates/elegant/border.png"
+      video_path: "templates/elegant/border_video.png"
+    bgm:
+      path: "templates/elegant/bgm.mp3"
+    transitions:
+      - "transitions/inverted-page-curl.glsl"
+      - "transitions/stereo-viewer.glsl"
+      - "transitions/ai6.glsl"
+    font:
+      path: "fonts/NotoSansSC-Light.otf"
+      size: 76
+      color: [240, 240, 255, 255]
+      outline_color: [20, 20, 40, 180]
+      outline_width: 4
+    subtitle:
+      template: "— {year}年{month}月{day}日 · 长沙卷烟厂 —"
+      typewriter_speed: 4
+      duration: 7.0
