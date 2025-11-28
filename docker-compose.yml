@@ -1,8 +1,8 @@
 services:
-  video-renderer-api:
+  autovlog:
     build: .
-    image: video-renderer-api:latest
-    container_name: video-renderer-api
+    image: autovlog:latest
+    container_name: autovlog
     ports:
       - "8001:8000"  # 改用8001端口避免与webrtc-streamer冲突
     volumes:
