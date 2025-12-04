@@ -8,9 +8,10 @@ import os
 from pathlib import Path
 from typing import List
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import PlainTextResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, validator
 import logging
 
@@ -31,6 +32,55 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 # 挂载静态文件服务
 app.mount("/videos", StaticFiles(directory=str(OUTPUT_DIR)), name="videos")
+
+
+# 自定义异常处理器：修复包含二进制数据和异常对象的验证错误
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    自定义请求验证异常处理器
+
+    解决问题：
+    1. 验证错误中包含二进制数据（如上传的文件）时，FastAPI默认的错误序列化
+       会尝试将bytes解码为UTF-8，导致UnicodeDecodeError
+    2. 验证错误的ctx中包含异常对象，无法被JSON序列化
+
+    解决方案：递归清理错误信息，将所有不可序列化的对象转换为字符串
+    """
+    logger.info(f"🔧 自定义异常处理器被调用 - 错误数量: {len(exc.errors())}")
+
+    def make_serializable(obj):
+        """递归将对象转换为可JSON序列化的格式"""
+        if isinstance(obj, bytes):
+            # bytes转换为简短的十六进制预览
+            preview = obj[:20].hex() if len(obj) > 20 else obj.hex()
+            return f"<binary data: {preview}{'...' if len(obj) > 20 else ''}>"
+        elif isinstance(obj, Exception):
+            # 异常对象转换为字符串
+            return f"{type(obj).__name__}: {str(obj)}"
+        elif isinstance(obj, dict):
+            # 递归处理字典
+            return {k: make_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            # 递归处理列表和元组
+            return [make_serializable(item) for item in obj]
+        elif isinstance(obj, (str, int, float, bool, type(None))):
+            # 基本类型直接返回
+            return obj
+        else:
+            # 其他对象转换为字符串表示
+            return str(obj)
+
+    errors = []
+    for error in exc.errors():
+        # 递归清理整个错误字典
+        clean_error = make_serializable(error)
+        errors.append(clean_error)
+
+    return JSONResponse(
+        status_code=422,
+        content={"detail": errors},
+    )
 
 
 class RenderRequest(BaseModel):

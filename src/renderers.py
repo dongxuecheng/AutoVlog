@@ -14,6 +14,7 @@ class BorderRenderer:
         self.width = width
         self.height = height
         self.texture_data = None
+        self.border_image = None  # 保存原始边框图片
         self.load_border(border_path)
 
     def load_border(self, border_path):
@@ -28,12 +29,60 @@ class BorderRenderer:
             if img.size != (self.width, self.height):
                 img = img.resize((self.width, self.height), Image.LANCZOS)
 
+        self.border_image = img
         self.texture_data = img.tobytes("raw", "RGBA")
         print(f"   ✓ 边框加载: {border_path}")
 
     def get_texture_data(self):
         """获取边框纹理数据"""
         return self.texture_data
+
+    def composite_image_on_border(self, image_path, position_config):
+        """
+        将图片按比例缩放后贴到边框的指定位置上
+
+        Args:
+            image_path: 要贴上去的图片路径
+            position_config: 位置配置字典 {x, y, width, height}
+
+        Returns:
+            合成后的RGB图像数据（用于视频编码）
+        """
+        # 加载用户图片
+        user_img = Image.open(image_path).convert("RGB")
+
+        # 提取目标区域参数
+        target_x = position_config.get("x", 0)
+        target_y = position_config.get("y", 0)
+        target_width = position_config.get("width", self.width)
+        target_height = position_config.get("height", self.height)
+
+        # 计算缩放比例（保持宽高比）
+        img_width, img_height = user_img.size
+        scale_w = target_width / img_width
+        scale_h = target_height / img_height
+        scale = min(scale_w, scale_h)  # 使用较小的比例以确保完全适配
+
+        # 计算缩放后的尺寸
+        new_width = int(img_width * scale)
+        new_height = int(img_height * scale)
+
+        # 缩放图片
+        resized_img = user_img.resize((new_width, new_height), Image.LANCZOS)
+
+        # 计算居中位置（在目标区域内居中）
+        offset_x = target_x + (target_width - new_width) // 2
+        offset_y = target_y + (target_height - new_height) // 2
+
+        # 创建最终合成图像（从边框开始）
+        result = self.border_image.copy()
+
+        # 将用户图片粘贴到边框上（RGB图片作为不透明层）
+        result.paste(resized_img, (offset_x, offset_y))
+
+        # 转换为RGB并返回字节数据
+        result_rgb = result.convert("RGB")
+        return result_rgb.tobytes("raw", "RGB")
 
 
 class SubtitleRenderer:

@@ -14,8 +14,13 @@ templates:
     name: "Classic"
     description: "经典风格 - 适合正式场合"
     border:
-      image_path: "templates/classic/border.png"
+      image_path: "examples/images_border.png"
       video_path: "templates/classic/border_video.png"
+    image_position:
+      x: 157          # 图片区域左上角的X坐标（距离画布左边105像素）
+      y: 273          # 图片区域左上角的Y坐标（距离画布顶部570像素）
+      width: 998     # 图片区域宽度
+      height: 571     # 图片区域高度
     bgm:
       path: "templates/classic/bgm.mp3"
     transitions:
@@ -39,6 +44,11 @@ templates:
     border:
       image_path: "templates/modern/border.png"
       video_path: "templates/modern/border_video.png"
+    image_position:
+      x: 100          # 图片在边框中的X坐标
+      y: 100          # 图片在边框中的Y坐标
+      width: 1720     # 图片区域宽度
+      height: 880     # 图片区域高度
     bgm:
       path: "templates/modern/bgm.mp3"
     transitions:
@@ -62,6 +72,11 @@ templates:
     border:
       image_path: "templates/elegant/border.png"
       video_path: "templates/elegant/border_video.png"
+    image_position:
+      x: 100          # 图片在边框中的X坐标
+      y: 100          # 图片在边框中的Y坐标
+      width: 1720     # 图片区域宽度
+      height: 880     # 图片区域高度
     bgm:
       path: "templates/elegant/bgm.mp3"
     transitions:

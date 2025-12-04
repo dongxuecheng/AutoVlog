@@ -232,11 +232,15 @@ class ApiVlogRenderer:
         # ========== 第一部分：渲染图片 (8秒，使用图片边框 + 字幕) ==========
         print(f"   🖼️  图片: {self.IMAGE_FRAMES} 帧 ({self.IMAGE_DURATION}秒)")
 
-        # 加载并预处理图片
-        img = Image.open(self.image_path).convert("RGB")
-        if img.size != (self.WIDTH, self.HEIGHT):
-            img = img.resize((self.WIDTH, self.HEIGHT), Image.LANCZOS)
-        img_data = img.tobytes("raw", "RGB")
+        # 使用BorderRenderer将图片复合到边框上
+        position_config = self.config.config.get("image_position", {})
+        composited_img_data = self.image_border_renderer.composite_image_on_border(
+            self.image_path, position_config
+        )
+        print(
+            f"   ✓ 图片已复合到边框 (位置: x={position_config.get('x')}, y={position_config.get('y')}, "
+            f"区域: {position_config.get('width')}x{position_config.get('height')})"
+        )
 
         # 生成字幕文本
         from datetime import datetime
@@ -252,12 +256,10 @@ class ApiVlogRenderer:
 
         print(f"   📝 字幕: {full_subtitle_text}")
 
-        # 渲染图片帧
+        # 渲染图片帧（图片已经包含边框，只需添加字幕）
         for frame_idx in range(self.IMAGE_FRAMES):
-            self.tex0.write(img_data)
-            prog["progress"].value = 0.0
-            self.fbo.use()
-            vao.render()
+            # 直接将复合后的图片写入纹理
+            self.tex0.write(composited_img_data)
 
             # 计算字幕文本（打字机效果）
             subtitle_text = None
@@ -265,25 +267,98 @@ class ApiVlogRenderer:
                 chars_to_show = (frame_idx // typewriter_speed) + 1
                 subtitle_text = full_subtitle_text[:chars_to_show]
 
-            # 叠加图片边框和字幕
-            final_frame = self.render_frame_with_border(
-                use_image_border=True, subtitle_text=subtitle_text
-            )
+            # 只需叠加字幕（不再需要边框）
+            if subtitle_text:
+                # 渲染字幕到纹理
+                subtitle_data = self.subtitle_renderer.render_text(
+                    subtitle_text,
+                    color=tuple(self.config.font["color"]),
+                    outline_color=tuple(self.config.font["outline_color"]),
+                    outline_width=self.config.font["outline_width"],
+                )
+                self.subtitle_tex.write(subtitle_data)
+
+                # 叠加字幕
+                self.temp_tex.write(composited_img_data)
+                self.subtitle_fbo.use()
+                self.temp_tex.use(0)
+                self.subtitle_tex.use(1)
+                self.subtitle_vao.render()
+                final_frame = self.subtitle_fbo.read(components=3)
+
+                # 恢复主FBO
+                self.fbo.use()
+            else:
+                final_frame = composited_img_data
+
             encoder.stdin.write(final_frame)
             total_frames += 1
 
-        # ========== 第二部分：渲染视频序列 (每个16秒，使用视频边框) ==========
-        current_vid = None
+        # ========== 第二部分：图片到视频的转场 ==========
+        print(f"   ✨ 转场: 图片→视频1", flush=True)
+
+        # 加载第一个视频用于转场
+        first_video_path = self.video_paths[0]
+        first_vid = VideoReader(
+            first_video_path,
+            self.WIDTH,
+            self.HEIGHT,
+            self.FPS,
+            self.FRAME_SIZE,
+            self.VIDEO_DURATION,
+        )
+
+        # 选择转场效果
+        transition = transitions[0]
+        print(f"      使用转场: {transition['name']}", flush=True)
+
+        # 创建转场着色器
+        prog = create_transition_shader(self.ctx, transition["source"])
+        vao = self._create_vao(prog)
+        self.tex0.use(0)
+        self.tex1.use(1)
+        prog["tex0"].value = 0
+        prog["tex1"].value = 1
+        if "ratio" in prog:
+            prog["ratio"].value = self.WIDTH / self.HEIGHT
+
+        # 渲染转场帧
+        for j in range(self.TRANS_FRAMES):
+            # tex0: 图片（复合后的），tex1: 第一个视频的帧
+            self.tex0.write(composited_img_data)
+            self.tex1.write(first_vid.read_frame())
+            prog["progress"].value = (j + 1) / self.TRANS_FRAMES
+
+            self.fbo.use()
+            self.tex0.use(0)
+            self.tex1.use(1)
+            vao.render()
+
+            # 转场帧使用视频边框
+            final_frame = self.render_frame_with_border(use_image_border=False)
+            encoder.stdin.write(final_frame)
+            total_frames += 1
+
+        # ========== 第三部分：渲染视频序列 (每个16秒，使用视频边框) ==========
+        current_vid = first_vid  # 使用已经加载的第一个视频
 
         for i, video_path in enumerate(self.video_paths):
             is_last = i == len(self.video_paths) - 1
 
-            # 加载当前视频
-            if current_vid is None:
+            # 处理当前视频的加载
+            if i == 0:
+                # 第一个视频已经在转场时加载，已读取TRANS_FRAMES帧
+                frames_to_play = (
+                    self.SOLO_FRAMES
+                    if not is_last
+                    else (self.VIDEO_FRAMES - self.TRANS_FRAMES)
+                )
+            else:
+                # 加载后续视频
                 trim_duration = (
-                    (self.TRANS_FRAMES + self.VIDEO_FRAMES) / self.FPS + 1.0
-                    if is_last
-                    else self.VIDEO_DURATION
+                    self.VIDEO_DURATION
+                    if not is_last
+                    else ((self.TRANS_FRAMES + self.VIDEO_FRAMES) / self.FPS + 1.0)
                 )
                 current_vid = VideoReader(
                     video_path,
@@ -293,28 +368,11 @@ class ApiVlogRenderer:
                     self.FRAME_SIZE,
                     trim_duration,
                 )
+                frames_to_play = self.SOLO_FRAMES if not is_last else self.VIDEO_FRAMES
 
-            # 加载下一个视频（用于转场）
-            next_vid = None
-            if not is_last:
-                trim_duration = (
-                    (self.TRANS_FRAMES + self.VIDEO_FRAMES) / self.FPS + 1.0
-                    if (i + 1 == len(self.video_paths) - 1)
-                    else self.VIDEO_DURATION
-                )
-                next_vid = VideoReader(
-                    self.video_paths[i + 1],
-                    self.WIDTH,
-                    self.HEIGHT,
-                    self.FPS,
-                    self.FRAME_SIZE,
-                    trim_duration,
-                )
-
-            # 主体播放
-            frames_to_play = self.VIDEO_FRAMES if is_last else self.SOLO_FRAMES
             print(f"   📹 视频 {i+1}/{len(self.video_paths)}: {frames_to_play} 帧")
 
+            # 主体播放
             for frame_idx in range(frames_to_play):
                 # 渲染视频帧
                 self.tex0.write(current_vid.read_frame())
@@ -327,9 +385,28 @@ class ApiVlogRenderer:
                 encoder.stdin.write(final_frame)
                 total_frames += 1
 
-            # 转场播放
-            if not is_last and next_vid:
-                transition = transitions[i % len(transitions)]
+            # 视频间转场
+            if not is_last:
+                # 加载下一个视频
+                next_video_path = self.video_paths[i + 1]
+                is_next_last = (i + 1) == len(self.video_paths) - 1
+                trim_duration = (
+                    self.VIDEO_DURATION
+                    if not is_next_last
+                    else ((self.TRANS_FRAMES + self.VIDEO_FRAMES) / self.FPS + 1.0)
+                )
+
+                next_vid = VideoReader(
+                    next_video_path,
+                    self.WIDTH,
+                    self.HEIGHT,
+                    self.FPS,
+                    self.FRAME_SIZE,
+                    trim_duration,
+                )
+
+                # 转场效果（图片→视频1用了transitions[0]，视频1→视频2用transitions[1]，依此类推）
+                transition = transitions[(i + 1) % len(transitions)]
                 print(f"   ✨ 转场 {i+1}→{i+2}: {transition['name']}")
 
                 # 切换着色器
@@ -342,6 +419,7 @@ class ApiVlogRenderer:
                 if "ratio" in prog:
                     prog["ratio"].value = self.WIDTH / self.HEIGHT
 
+                # 渲染转场帧
                 for j in range(self.TRANS_FRAMES):
                     self.tex0.write(current_vid.read_frame())
                     self.tex1.write(next_vid.read_frame())
@@ -360,6 +438,7 @@ class ApiVlogRenderer:
                 current_vid.close()
                 current_vid = next_vid
             else:
+                # 最后一个视频，关闭
                 current_vid.close()
 
         encoder.stdin.close()
