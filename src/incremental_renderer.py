@@ -7,12 +7,13 @@
 - finalize: 合并所有段落并添加BGM
 """
 
-import cv2
+import io
 import numpy as np
 import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
+from PIL import Image
 
 from src.api_renderer import ApiVlogRenderer
 from src.session_manager import SessionManager, SegmentInfo
@@ -133,9 +134,12 @@ class IncrementalRenderer(ApiVlogRenderer):
         encoder.wait()
         
         # 保存最后一帧（用于下次转场）
-        last_frame_png = cv2.imencode('.png', 
-            np.frombuffer(final_frame, dtype=np.uint8).reshape(self.HEIGHT, self.WIDTH, 3)[::-1]
-        )[1].tobytes()
+        # final_frame 是 RGB 格式，使用 Pillow 编码为 PNG
+        last_frame_rgb = np.frombuffer(final_frame, dtype=np.uint8).reshape(self.HEIGHT, self.WIDTH, 3)[::-1]
+        img = Image.fromarray(last_frame_rgb, mode='RGB')
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        last_frame_png = buffer.getvalue()
         SessionManager.save_last_frame(self.session_id, last_frame_png)
         
         # 记录段落信息
@@ -162,6 +166,11 @@ class IncrementalRenderer(ApiVlogRenderer):
         print(f"\n🎥 追加视频段落...")
         print(f"   视频: {video_path}")
         
+        # 初始化 GPU 环境（如果还没有初始化）
+        if not hasattr(self, 'ctx'):
+            self.setup_gpu()
+            self.setup_overlays()
+        
         # 获取下一个段落索引
         metadata = SessionManager.get_metadata(self.session_id)
         segment_index = len(metadata.segments)
@@ -172,12 +181,9 @@ class IncrementalRenderer(ApiVlogRenderer):
         if not last_frame_png:
             raise ValueError("未找到上一帧缓存，无法进行转场")
         
-        # 解码上一帧
-        last_frame_np = cv2.imdecode(
-            np.frombuffer(last_frame_png, dtype=np.uint8), 
-            cv2.IMREAD_COLOR
-        )
-        last_frame_rgb = cv2.cvtColor(last_frame_np, cv2.COLOR_BGR2RGB)[::-1]
+        # 解码上一帧（使用 Pillow，原生 RGB 格式）
+        img = Image.open(io.BytesIO(last_frame_png))
+        last_frame_rgb = np.array(img)[::-1]  # 垂直翻转以匹配 OpenGL 坐标系
         last_frame_bytes = last_frame_rgb.tobytes()
         
         # 创建编码器
@@ -233,10 +239,19 @@ class IncrementalRenderer(ApiVlogRenderer):
         remaining_frames = self.VIDEO_FRAMES - self.TRANS_FRAMES
         print(f"   🎞️  渲染视频: {remaining_frames}帧")
         
+        # 复用转场着色器，progress=0 时直接显示 tex0
+        prog["progress"].value = 0.0
+        
         last_video_frame = None
         for _ in range(remaining_frames):
             frame = video_reader.read_frame()
             self.tex0.write(frame)
+            
+            # 关键：必须调用 vao.render() 将 tex0 渲染到 FBO
+            self.fbo.use()
+            self.tex0.use(0)
+            self.tex1.use(1)  # 虽然不使用，但保持一致
+            vao.render()
             
             # 叠加视频边框
             final_frame = self.render_frame_with_border(use_image_border=False)
@@ -248,10 +263,12 @@ class IncrementalRenderer(ApiVlogRenderer):
         encoder.wait()
         video_reader.close()
         
-        # 保存最后一帧
-        last_frame_png = cv2.imencode('.png',
-            np.frombuffer(last_video_frame, dtype=np.uint8).reshape(self.HEIGHT, self.WIDTH, 3)[::-1]
-        )[1].tobytes()
+        # 保存最后一帧（使用 Pillow）
+        last_frame_rgb = np.frombuffer(last_video_frame, dtype=np.uint8).reshape(self.HEIGHT, self.WIDTH, 3)[::-1]
+        img = Image.fromarray(last_frame_rgb, mode='RGB')
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        last_frame_png = buffer.getvalue()
         SessionManager.save_last_frame(self.session_id, last_frame_png)
         
         # 记录段落信息

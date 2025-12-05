@@ -369,10 +369,10 @@ def get_render_status(session_id: str):
     }
     ```
     """
+    if not SessionManager.session_exists(session_id):
+        raise HTTPException(status_code=404, detail=f"会话不存在: {session_id}")
+    
     try:
-        if not SessionManager.session_exists(session_id):
-            raise HTTPException(status_code=404, detail=f"会话不存在: {session_id}")
-        
         metadata = SessionManager.get_metadata(session_id)
         
         return {

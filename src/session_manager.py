@@ -48,10 +48,8 @@ class SessionMetadata:
     
     @staticmethod
     def from_dict(data: dict) -> 'SessionMetadata':
-        segments = data.pop('segments', [])
-        metadata = SessionMetadata(**data)
-        metadata.segments = segments
-        return metadata
+        # 不要 pop，直接传入所有字段
+        return SessionMetadata(**data)
 
 
 class SessionManager:
@@ -176,12 +174,11 @@ class SessionManager:
             return
         
         if keep_final_video:
-            # 仅删除中间文件
+            # 仅删除中间文件，保留 metadata.json 用于状态查询
             items_to_delete = [
                 session_path / "segments",
                 session_path / "last_frame.png",
                 session_path / "concat.txt",
-                session_path / "metadata.json",
             ]
             for item in items_to_delete:
                 if item.exists():
@@ -189,7 +186,7 @@ class SessionManager:
                         shutil.rmtree(item)
                     else:
                         item.unlink()
-            print(f"🧹 会话清理完成（保留最终视频）: {session_id}")
+            print(f"🧹 会话清理完成（保留最终视频和元数据）: {session_id}")
         else:
             # 删除整个会话目录
             shutil.rmtree(session_path)
