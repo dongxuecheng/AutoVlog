@@ -284,14 +284,43 @@ class IncrementalRenderer(ApiVlogRenderer):
         print(f"   ✅ 视频段落渲染完成 (segment_{segment_index}.h264)")
         return segment_index
     
-    def finalize(self, output_path: Optional[str] = None) -> str:
+    def extract_thumbnail(self, video_path: str, thumbnail_path: str, time_position: float = 5.0) -> bool:
+        """从视频中提取缩略图
+        
+        Args:
+            video_path: 视频文件路径
+            thumbnail_path: 缩略图保存路径
+            time_position: 提取帧的时间位置（秒），默认为5秒
+        
+        Returns:
+            是否成功提取
+        """
+        try:
+            # 使用 ffmpeg 提取指定时间的帧
+            thumbnail_cmd = [
+                "ffmpeg", "-y",
+                "-ss", str(time_position),  # 定位到指定时间
+                "-i", video_path,
+                "-vframes", "1",  # 只提取一帧
+                "-q:v", "2",  # 高质量
+                thumbnail_path
+            ]
+            
+            subprocess.run(thumbnail_cmd, check=True, capture_output=True)
+            print(f"   📸 封面已提取: {thumbnail_path}")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"   ⚠️  封面提取失败: {e}")
+            return False
+    
+    def finalize(self, output_path: Optional[str] = None) -> tuple[str, Optional[str]]:
         """合并所有段落并添加BGM
         
         Args:
             output_path: 输出文件路径（可选，默认保存在会话目录）
         
         Returns:
-            最终视频路径
+            (最终视频路径, 封面图片路径)
         """
         print(f"\n🎵 最终合成...")
         
@@ -353,13 +382,22 @@ class IncrementalRenderer(ApiVlogRenderer):
         
         print(f"   ✅ 最终合成完成: {output_path}")
         
+        # 提取视频封面（第5秒）
+        thumbnail_path = None
+        output_file = Path(output_path)
+        thumbnail_file = output_file.with_suffix('.jpg')  # 使用相同的文件名，但扩展名为 .jpg
+        
+        if self.extract_thumbnail(str(output_path), str(thumbnail_file), time_position=5.0):
+            thumbnail_path = str(thumbnail_file)
+        
         # 更新会话状态
         SessionManager.update_metadata(self.session_id, {
             'status': 'completed',
-            'output_path': str(output_path)
+            'output_path': str(output_path),
+            'thumbnail_path': thumbnail_path
         })
         
-        return str(output_path)
+        return str(output_path), thumbnail_path
     
     def cleanup(self):
         """清理 GPU 资源"""

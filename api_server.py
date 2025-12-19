@@ -158,11 +158,13 @@ def render_video(request: RenderRequest):
 
 # ==================== 增量渲染 API ====================
 
+
 class InitRequest(BaseModel):
     """初始化渲染请求"""
+
     template: str = Field(..., description="模板名称 (classic/modern/elegant)")
     image_path: str = Field(..., description="图片路径（本机目录路径）")
-    
+
     @validator("image_path")
     def validate_image_path(cls, v):
         if not os.path.exists(v):
@@ -174,9 +176,10 @@ class InitRequest(BaseModel):
 
 class AppendRequest(BaseModel):
     """追加视频请求"""
+
     session_id: str = Field(..., description="会话ID")
     video_path: str = Field(..., description="视频路径（本机目录路径）")
-    
+
     @validator("video_path")
     def validate_video_path(cls, v):
         if not os.path.exists(v):
@@ -188,6 +191,7 @@ class AppendRequest(BaseModel):
 
 class FinalizeRequest(BaseModel):
     """完成合成请求"""
+
     session_id: str = Field(..., description="会话ID")
     output_filename: Optional[str] = Field(None, description="输出文件名（可选）")
 
@@ -196,10 +200,10 @@ class FinalizeRequest(BaseModel):
 def render_init(request: InitRequest):
     """
     初始化渲染会话 - 渲染首张图片
-    
+
     - **template**: 模板名称 (classic/modern/elegant)
     - **image_path**: 图片路径（容器内绝对路径）
-    
+
     返回：
     ```json
     {
@@ -212,24 +216,24 @@ def render_init(request: InitRequest):
     """
     try:
         logger.info(f"🎬 初始化渲染会话 | 模板: {request.template}")
-        
+
         # 创建会话
         session_id = SessionManager.create_session(request.template)
-        
+
         # 创建渲染器并渲染初始图片
         renderer = IncrementalRenderer(session_id, request.template)
         segment_index = renderer.render_init(request.image_path)
         renderer.cleanup()
-        
+
         logger.info(f"✅ 会话 {session_id} 初始化完成")
-        
+
         return {
             "session_id": session_id,
             "segment_index": segment_index,
             "status": "initialized",
-            "message": "初始图片段落渲染完成"
+            "message": "初始图片段落渲染完成",
         }
-        
+
     except Exception as e:
         logger.error(f"初始化失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"初始化失败: {str(e)}")
@@ -239,10 +243,10 @@ def render_init(request: InitRequest):
 def render_append(request: AppendRequest):
     """
     追加视频段落
-    
+
     - **session_id**: 会话ID
     - **video_path**: 视频路径（容器内绝对路径）
-    
+
     返回：
     ```json
     {
@@ -257,32 +261,34 @@ def render_append(request: AppendRequest):
     try:
         # 验证会话
         if not SessionManager.session_exists(request.session_id):
-            raise HTTPException(status_code=404, detail=f"会话不存在: {request.session_id}")
-        
+            raise HTTPException(
+                status_code=404, detail=f"会话不存在: {request.session_id}"
+            )
+
         logger.info(f"🎥 追加视频 | 会话: {request.session_id}")
-        
+
         # 获取模板名称
         metadata = SessionManager.get_metadata(request.session_id)
-        
+
         # 创建渲染器并追加视频
         renderer = IncrementalRenderer(request.session_id, metadata.template_name)
         segment_index = renderer.render_append(request.video_path)
         renderer.cleanup()
-        
+
         # 获取使用的转场
         updated_metadata = SessionManager.get_metadata(request.session_id)
         segment_info = updated_metadata.segments[segment_index]
-        
+
         logger.info(f"✅ 会话 {request.session_id} 追加段落 {segment_index}")
-        
+
         return {
             "session_id": request.session_id,
             "segment_index": segment_index,
-            "transition_used": segment_info.get('transition_shader'),
+            "transition_used": segment_info.get("transition_shader"),
             "status": "rendering",
-            "message": "视频段落追加完成"
+            "message": "视频段落追加完成",
         }
-        
+
     except Exception as e:
         logger.error(f"追加失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"追加失败: {str(e)}")
@@ -292,15 +298,16 @@ def render_append(request: AppendRequest):
 def render_finalize(request: FinalizeRequest, background_tasks: BackgroundTasks):
     """
     完成合成 - 合并所有段落并添加BGM
-    
+
     - **session_id**: 会话ID
     - **output_filename**: 输出文件名（可选，默认使用会话ID）
-    
+
     返回：
     ```json
     {
         "session_id": "uuid",
         "video_url": "http://localhost:8001/videos/final_xxx.mp4",
+        "img_url": "http://localhost:8001/videos/final_xxx.jpg",
         "total_segments": 3,
         "status": "completed",
         "message": "视频合成完成"
@@ -310,13 +317,15 @@ def render_finalize(request: FinalizeRequest, background_tasks: BackgroundTasks)
     try:
         # 验证会话
         if not SessionManager.session_exists(request.session_id):
-            raise HTTPException(status_code=404, detail=f"会话不存在: {request.session_id}")
-        
+            raise HTTPException(
+                status_code=404, detail=f"会话不存在: {request.session_id}"
+            )
+
         logger.info(f"🎵 最终合成 | 会话: {request.session_id}")
-        
+
         # 获取元数据
         metadata = SessionManager.get_metadata(request.session_id)
-        
+
         # 确定输出路径
         if request.output_filename:
             output_path = OUTPUT_DIR / request.output_filename
@@ -324,29 +333,39 @@ def render_finalize(request: FinalizeRequest, background_tasks: BackgroundTasks)
             now = datetime.now()
             output_filename = f"final_{now.year}{now.month:02d}{now.day:02d}{now.hour:02d}{now.minute:02d}.mp4"
             output_path = OUTPUT_DIR / output_filename
-        
+
         # 创建渲染器并完成合成
         renderer = IncrementalRenderer(request.session_id, metadata.template_name)
-        final_video_path = renderer.finalize(str(output_path))
+        final_video_path, thumbnail_path = renderer.finalize(str(output_path))
         renderer.cleanup()
-        
+
         # 后台清理会话文件（保留最终视频）
-        background_tasks.add_task(SessionManager.cleanup_session, request.session_id, True)
-        
+        background_tasks.add_task(
+            SessionManager.cleanup_session, request.session_id, True
+        )
+
         # 生成视频URL
         base_url = os.getenv("API_BASE_URL", "http://localhost:8001")
         video_url = f"{base_url}/videos/{Path(final_video_path).name}"
         
+        # 生成封面URL（如果存在）
+        img_url = None
+        if thumbnail_path:
+            img_url = f"{base_url}/videos/{Path(thumbnail_path).name}"
+
         logger.info(f"✅ 会话 {request.session_id} 合成完成: {video_url}")
-        
+        if img_url:
+            logger.info(f"   📸 封面: {img_url}")
+
         return {
             "session_id": request.session_id,
             "video_url": video_url,
+            "img_url": img_url,
             "total_segments": len(metadata.segments),
             "status": "completed",
-            "message": "视频合成完成"
+            "message": "视频合成完成",
         }
-        
+
     except Exception as e:
         logger.error(f"合成失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"合成失败: {str(e)}")
@@ -356,7 +375,7 @@ def render_finalize(request: FinalizeRequest, background_tasks: BackgroundTasks)
 def get_render_status(session_id: str):
     """
     查询渲染会话状态
-    
+
     返回：
     ```json
     {
@@ -371,10 +390,10 @@ def get_render_status(session_id: str):
     """
     if not SessionManager.session_exists(session_id):
         raise HTTPException(status_code=404, detail=f"会话不存在: {session_id}")
-    
+
     try:
         metadata = SessionManager.get_metadata(session_id)
-        
+
         return {
             "session_id": metadata.session_id,
             "template": metadata.template_name,
@@ -382,9 +401,9 @@ def get_render_status(session_id: str):
             "total_segments": len(metadata.segments),
             "total_frames": metadata.total_frames,
             "created_at": metadata.created_at,
-            "segments": metadata.segments
+            "segments": metadata.segments,
         }
-        
+
     except Exception as e:
         logger.error(f"查询状态失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"查询状态失败: {str(e)}")
